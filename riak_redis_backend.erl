@@ -14,6 +14,9 @@
 
 %% @doc riak_redis_backend is a Riak storage backend using erldis.
 
+
+%% Blog post about the initial release : 
+%% http://cestari.wordpress.com/2009/12/22/a-redis-backend-for-riak/
 -module(riak_redis_backend).
 -author('Eric Cestari <eric@ohmforce.com').
 -export([start/1,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
