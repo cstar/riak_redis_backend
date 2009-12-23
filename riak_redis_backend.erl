@@ -43,7 +43,7 @@ stop(_State)->
 get(#state{pid=Pid}, BK)->
   case erldis:get(Pid, k2l(BK)) of
     nil -> {error, notfound};
-    Val -> {ok, l2t(Val)}
+    Val -> {ok, binary_to_term(Val)}
   end.
 
 % put(state(), Key :: binary(), Val :: binary()) ->
@@ -51,13 +51,13 @@ get(#state{pid=Pid}, BK)->
 put(#state{pid=Pid}, {Bucket, Key}=BK, Value)->
   %riak_eventer:notify(riak_redis_backend, put, {{Bucket, Key}, Value}),
   check_bucket(Pid, Bucket),
-  case erldis:set(Pid, k2l(BK), t2l(Value)) of
+  case erldis:set(Pid, k2l(BK), term_to_binary(Value)) of
     ok -> 
-     case {erldis:sismember(Pid, binary_to_list(Bucket), t2l(Key)), 
-           erldis:sismember(Pid, "world", t2l(BK))} of
+     case {erldis:sismember(Pid, Bucket, Key), 
+           erldis:sismember(Pid, <<"world">>, term_to_binary(BK))} of
        {false, false} ->
-         erldis:sadd(Pid, binary_to_list(Bucket), t2l(Key)),
-         erldis:sadd(Pid, "world", t2l(BK)),
+         erldis:sadd(Pid, binary_to_list(Bucket), Key),
+         erldis:sadd(Pid, <<"world">>, term_to_binary(BK)),
          ok;
         _ ->
           ok
@@ -70,11 +70,11 @@ put(#state{pid=Pid}, {Bucket, Key}=BK, Value)->
 delete(#state { pid=Pid }, {Bucket, Key}=BK) ->
   case erldis:del(Pid, k2l(BK)) of
     true -> 
-      case {erldis:sismember(Pid, binary_to_list(Bucket), t2l(Key)), 
-            erldis:sismember(Pid, "world", t2l(BK))} of
+      case {erldis:sismember(Pid, Bucket, Key), 
+            erldis:sismember(Pid, <<"world">>, term_to_binary(BK))} of
        {true, true} ->
-         erldis:srem(Pid, binary_to_list(Bucket), t2l(Key)),
-         erldis:srem(Pid, "world", t2l(BK)),
+         erldis:srem(Pid, Bucket, Key),
+         erldis:srem(Pid, <<"world">>, term_to_binary(BK)),
          ok;
         _ ->
           ok
@@ -84,42 +84,25 @@ delete(#state { pid=Pid }, {Bucket, Key}=BK) ->
   
 % list(state()) -> [Key :: binary()]
 list(#state { pid=Pid }) ->
-  lists:map(fun(Key)->
-    l2t(Key)
-  end,
-  erldis:smembers(Pid, "world")).
+  lists:map(fun binary_to_term/1, 
+      erldis:smembers(Pid, <<"world">>)).
 
 list_bucket(#state { pid=Pid }, '_')->
-  lists:map(fun(Key)->
-    l2t(Key)
-  end,
-  erldis:smembers(Pid, "buckets"));  
+  erldis:smembers(Pid, <<"buckets">>);  
     
 list_bucket(#state { pid=Pid }, {filter, Bucket, Fun})->
-  KL = lists:filter(Fun, erldis:smembers(Pid, binary_to_list(Bucket))),
-  lists:map(fun(Key)->
-    l2t(Key)
-  end, KL);
+  lists:filter(Fun, erldis:smembers(Pid, binary_to_list(Bucket)));
 list_bucket(#state { pid=Pid }, Bucket) ->
-  lists:map(fun(Key)->
-    l2t(Key)
-  end,
-  erldis:smembers(Pid, binary_to_list(Bucket))).
+  erldis:smembers(Pid, Bucket).
 
 check_bucket(Pid,Bucket)->
-  B = t2l(Bucket),
-  case erldis:sismember(Pid, "buckets", B) of
+  case erldis:sismember(Pid, <<"buckets">>, Bucket) of
     true ->
       ok;
     false ->
-      erldis:sadd(Pid, "buckets",B)
+      erldis:sadd(Pid, <<"buckets">>,Bucket)
   end.
 
 
 k2l({B, V})->
-  binary_to_list(list_to_binary([B, V])).
-t2l(V)->
-  binary_to_list(term_to_binary(V)).
-  
-l2t(V)->
-  binary_to_term(list_to_binary(V)).
+  list_to_binary([B, V]).
