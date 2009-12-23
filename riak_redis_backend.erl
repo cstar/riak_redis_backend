@@ -50,18 +50,12 @@ get(#state{pid=Pid}, BK)->
 %   ok | {error, Reason :: term()}  
 put(#state{pid=Pid}, {Bucket, Key}=BK, Value)->
   %riak_eventer:notify(riak_redis_backend, put, {{Bucket, Key}, Value}),
-  check_bucket(Pid, Bucket),
+  erldis:sadd(Pid, <<"buckets">>,Bucket),
   case erldis:set(Pid, k2l(BK), term_to_binary(Value)) of
     ok -> 
-     case {erldis:sismember(Pid, Bucket, Key), 
-           erldis:sismember(Pid, <<"world">>, term_to_binary(BK))} of
-       {false, false} ->
-         erldis:sadd(Pid, binary_to_list(Bucket), Key),
-         erldis:sadd(Pid, <<"world">>, term_to_binary(BK)),
-         ok;
-        _ ->
-          ok
-      end;
+      erldis:sadd(Pid, Bucket, Key),
+      erldis:sadd(Pid, <<"world">>, term_to_binary(BK)),
+      ok;
     _ -> {error, unable_to_put}
   end.
 
@@ -70,16 +64,11 @@ put(#state{pid=Pid}, {Bucket, Key}=BK, Value)->
 delete(#state { pid=Pid }, {Bucket, Key}=BK) ->
   case erldis:del(Pid, k2l(BK)) of
     true -> 
-      case {erldis:sismember(Pid, Bucket, Key), 
-            erldis:sismember(Pid, <<"world">>, term_to_binary(BK))} of
-       {true, true} ->
-         erldis:srem(Pid, Bucket, Key),
-         erldis:srem(Pid, <<"world">>, term_to_binary(BK)),
-         ok;
-        _ ->
-          ok
-      end;
-    _ -> {error, unable_to_delete}
+      erldis:srem(Pid, Bucket, Key),
+      erldis:srem(Pid, <<"world">>, term_to_binary(BK)),
+      ok;
+    _ -> 
+      {error, unable_to_delete}
   end.
   
 % list(state()) -> [Key :: binary()]
@@ -91,18 +80,11 @@ list_bucket(#state { pid=Pid }, '_')->
   erldis:smembers(Pid, <<"buckets">>);  
     
 list_bucket(#state { pid=Pid }, {filter, Bucket, Fun})->
-  lists:filter(Fun, erldis:smembers(Pid, binary_to_list(Bucket)));
+  lists:filter(Fun, erldis:smembers(Pid, Bucket));
 list_bucket(#state { pid=Pid }, Bucket) ->
   erldis:smembers(Pid, Bucket).
 
-check_bucket(Pid,Bucket)->
-  case erldis:sismember(Pid, <<"buckets">>, Bucket) of
-    true ->
-      ok;
-    false ->
-      erldis:sadd(Pid, <<"buckets">>,Bucket)
-  end.
 
 
 k2l({B, V})->
-  list_to_binary([B, V]).
+  <<B/binary,V/binary>>.
