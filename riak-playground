@@ -1,0 +1,170 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%! -sasl errlog_type error  -name tester -noshell  -setcookie riak -pa ../riak/apps/riak/ebin
+%%-kernel error_logger silent 
+
+main(_)->
+  {ok, C} = riak:client_connect(dev1@boulette.local),
+  step1(C),
+  %step2(C),
+  %empty_bucket(C, <<"entries">>).
+  ok.
+  
+empty_bucket(C, Name)->
+  {ok, Keys} = C:list_keys(Name),
+  lists:map(fun(Key)->
+      C:delete(Name, Key, 1)
+    end, Keys).
+
+step2(C)->
+  Participant = make_rand_list_picker([<<"cstar">>, <<"martin">>, <<"sacha">>, <<"helene">>, <<"boulette">>]),
+  Entry = make_rand_fun(100),
+  Blog = make_rand_fun(20),
+  statistics(wall_clock),
+  fill(10, C, Participant, Entry, Blog),
+  %{_, R1} = statistics(runtime),
+  {_, W1} = statistics(wall_clock),
+  io:format("Fill time for adding 1000 entry: ~p seconds~n", [ W1/1000]),
+  count_chars_per_user(C),
+  {_, W2} = statistics(wall_clock),
+  io:format("MapRed time=~p seconds~n", [W2/1000]),
+  statistics(wall_clock),
+  count_chars_for_user(C, <<"boulette">>),
+  {_, W2} = statistics(wall_clock),
+  io:format("MapRed time=~p seconds~n", [W2/1000]).
+
+
+
+fill(0,_, _, _ , _)->
+  d("done !");
+fill(N,C, Participant, Entry, Blog)->
+  Size = erlang:phash(now(), 10)*100,
+  add_entry_to_blog(C, Entry(), Blog(), Size,Participant()),
+  fill(N-1,C, Participant, Entry, Blog).
+  
+
+add_entry_to_blog(C, EntryId, BlogId, Size, Author)->
+  case C:get(<<"blogs">>, BlogId, 1) of
+    {error,_}=_Error ->
+      %Error;
+      Blog = [{size, 0}, {entries, [EntryId]}, {owners, [Author]}],
+      C:put(riak_object:new(<<"blogs">>, BlogId, Blog), 1);
+    {ok, Blog}->
+      %d("Blog",riak_object:get_value(Blog)),
+      Dict = dict:from_list(riak_object:get_value(Blog)),
+      D2 = dict:append(entries, EntryId, Dict),
+      D3 = dict:update(size,fun(OldSize) -> OldSize + Size end, D2),
+      UpBlog = riak_object:update_value(Blog, dict:to_list(D3)),
+      C:put(UpBlog,1)
+  end,
+  case C:get(<<"entries">>, EntryId, 1) of
+    {error,_} ->
+      Entry = [{blog, [BlogId]}, {size, Size}, {author, Author}],
+      C:put(riak_object:new(<<"entries">>, EntryId, Entry), 1);
+    {ok, Obj}->
+      %d("Entry", riak_object:get_value(Obj)),
+      BDict = dict:from_list(riak_object:get_value(Obj)),
+      BD2 = dict:append(blog, BlogId, BDict),
+      UpEntry = riak_object:update_value(Obj, dict:to_list(BD2)),
+      C:put(UpEntry,1)
+  end.
+  
+count_chars_per_user(C)->
+  Count = fun(G, undefined, none) ->
+       O = riak_object:get_value(G),
+       Size = proplists:get_value(size, O),
+       Authors = proplists:get_value(owners, O),
+       [dict:from_list(lists:map(fun(Author)->
+          {Author, Size}
+        end, Authors))]
+    end,
+           
+  Merge = fun(Gcounts, none) ->
+             [lists:foldl(fun(G, Acc) ->
+                    dict:merge(fun(_, X, Y) -> X+Y end,
+                            G, Acc)
+                    end,
+            dict:new(),Gcounts)]
+           end,
+  {ok, [R]} = C:mapred_bucket(<<"blogs">>, 
+          [{map, {qfun, Count}, none, false},
+           {reduce, {qfun, Merge}, none, true}]),
+   d("Usage per user", dict:to_list(R)),
+   dict:to_list(R).       
+  
+count_chars_for_user(C, Name)->
+  Count = fun(G, undefined, none) ->
+       O = riak_object:get_value(G),
+       Size = proplists:get_value(size, O),
+       Authors = proplists:get_value(owners, O),
+       case lists:member(Name, Authors) of
+         true ->
+           [Size];
+         _ ->
+           []
+        end
+    end,
+               
+  Merge = fun(Gcounts, none) ->
+             lists:foldl(fun(G, Acc) ->
+                   G + Acc 
+                end,
+            0,Gcounts)
+           end,
+  {ok, R} = C:mapred_bucket(<<"blogs">>, 
+          [{map, {qfun, Count}, none, false},
+           {reduce, {qfun, Merge}, none, true}]),
+   d("Usage ", {Name, R}),
+   R.
+  
+  
+step1(C)->
+  Mine = riak_object:new(<<"groceries">>, <<"mine">>, ["eggs", "bacon"]),
+  C:put(Mine, 1),
+  Yours = riak_object:new(<<"groceries">>, <<"yours">>, ["eggs", "wine"]),
+  C:put(Yours, 2),
+  d(C:list_keys(<<"groceries">>)),
+  {ok, Oa} = C:get(<<"groceries">>, <<"mine">>, 2),
+  d(riak_object:get_value(Oa)),
+  d(dict:to_list(riak_object:get_metadata(Oa))),
+  Ob = riak_object:update_value(Oa, ["ice cream"|riak_object:get_value(Oa)]),
+  C:put(Ob, 2),
+  
+  Count = fun(G, undefined, none) ->
+             [dict:from_list([{I, 1} || I <- riak_object:get_value(G)])]
+           end,
+  Merge = fun(Gcounts, none) ->
+             [lists:foldl(fun(G, Acc) ->
+                    dict:merge(fun(_, X, Y) -> X+Y end,
+                            G, Acc)
+                    end,
+            dict:new(),Gcounts)]
+           end,
+  {ok, [R]} = C:mapred([{<<"groceries">>, <<"mine">>},{<<"groceries">>, <<"yours">>}],
+                             [{map, {qfun, Count}, none, false},
+                              {reduce, {qfun, Merge}, none, true}]),
+   d(dict:to_list(R)),
+  
+  
+  C:delete(<<"groceries">>, <<"mine">>, 1),
+  C:delete(<<"groceries">>, <<"yours">>, 1),
+  d(C:list_keys(<<"groceries">>)).
+
+d({ok, V})->
+  d(V);
+d(V)->
+  d("output", V).
+d(T, V) ->
+  io:format(T ++ " : ~p~n", [V]).
+
+
+
+make_rand_fun(Max)->
+  fun()->
+    list_to_binary(integer_to_list(erlang:phash(now(), Max)))
+  end.
+  
+make_rand_list_picker(List)->
+  fun()->
+    lists:nth(erlang:phash(now(), length(List)), List)
+  end.
