@@ -25,14 +25,14 @@
 -export([start/1,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
 
 % @type state() = term().
--record(state, {pid}).
+-record(state, {pid, partition}).
 
 % @spec start(Partition :: integer()) ->
 %                        {ok, state()} | {{error, Reason :: term()}, state()}
-start(_Partition)->
-  {ok, Pid} = erldis_sync_client:connect("localhost"),
-  erldis:select(Pid, erlang:phash2(node(), 40)),
-  {ok, #state{pid=Pid}}.
+start(Partition)->
+  {ok, Pid} = erldis_sync_client:connect(),
+  P=list_to_binary(integer_to_list(Partition)),
+  {ok, #state{pid=Pid, partition = P}}.
 
 % @spec stop(state()) -> ok | {error, Reason :: term()}  
 stop(_State)->
@@ -40,51 +40,55 @@ stop(_State)->
 
 % get(state(), Key :: binary()) ->
 %   {ok, Val :: binary()} | {error, Reason :: term()}
-get(#state{pid=Pid}, BK)->
-  case erldis:get(Pid, k2l(BK)) of
+get(#state{partition=P, pid=Pid}, BK)->
+  case erldis:get(Pid, k2l(P,BK)) of
     nil -> {error, notfound};
-    Val -> {ok, binary_to_term(Val)}
+    Val -> 
+    case catch binary_to_term(Val) of
+      {'EXIT', _}->
+        throw({badterm, BK, Val});
+      V ->
+        {ok, V}
+    end
   end.
 
 % put(state(), Key :: binary(), Val :: binary()) ->
 %   ok | {error, Reason :: term()}  
-put(#state{pid=Pid}, {Bucket, Key}=BK, Value)->
-  %riak_eventer:notify(riak_redis_backend, put, {{Bucket, Key}, Value}),
-  erldis:sadd(Pid, <<"buckets">>,Bucket),
-  case erldis:set(Pid, k2l(BK), term_to_binary(Value)) of
+put(#state{partition=P,pid=Pid}, {Bucket, Key}=BK, Value)->
+  erldis:sadd(Pid, <<"buckets:",P/binary>>,Bucket),
+  case erldis:set(Pid, k2l(P,BK), term_to_binary(Value)) of
     ok -> 
-      erldis:sadd(Pid, Bucket, Key),
-      erldis:sadd(Pid, <<"world">>, term_to_binary(BK)),
+      erldis:sadd(Pid, <<P/binary,Bucket/binary>>, Key),
+      erldis:sadd(Pid, <<"world:",P/binary>>, term_to_binary(BK)),
       ok;
     _ -> {error, unable_to_put}
   end.
 
 % delete(state(), Key :: binary()) ->
 %   ok | {error, Reason :: term()}
-delete(#state { pid=Pid }, {Bucket, Key}=BK) ->
-  case erldis:del(Pid, k2l(BK)) of
+delete(#state {partition=P, pid=Pid }, {Bucket, Key}=BK) ->
+  erldis:srem(Pid, <<"buckets:",P/binary>>,Bucket),
+  case erldis:del(Pid, k2l(P,BK)) of
     true -> 
-      erldis:srem(Pid, Bucket, Key),
-      erldis:srem(Pid, <<"world">>, term_to_binary(BK)),
+      erldis:srem(Pid, <<P/binary,Bucket/binary>>, Key),
+      erldis:srem(Pid, <<"world:",P/binary>>, term_to_binary(BK)),
       ok;
     _ -> 
       {error, unable_to_delete}
   end.
   
 % list(state()) -> [Key :: binary()]
-list(#state { pid=Pid }) ->
+list(#state {partition=P, pid=Pid }) ->
   lists:map(fun binary_to_term/1, 
-      erldis:smembers(Pid, <<"world">>)).
+      erldis:smembers(Pid, <<"world:",P/binary>>)).
 
-list_bucket(#state { pid=Pid }, '_')->
-  erldis:smembers(Pid, <<"buckets">>);  
+list_bucket(#state {partition=P, pid=Pid }, '_')->
+  erldis:smembers(Pid, <<"buckets:",P/binary>>);  
     
-list_bucket(#state { pid=Pid }, {filter, Bucket, Fun})->
-  lists:filter(Fun, erldis:smembers(Pid, Bucket));
-list_bucket(#state { pid=Pid }, Bucket) ->
-  erldis:smembers(Pid, Bucket).
+list_bucket(#state {partition=P, pid=Pid }, {filter, Bucket, Fun})->
+  lists:filter(Fun, erldis:smembers(Pid, <<P/binary,Bucket/binary>>));
+list_bucket(#state {partition=P,  pid=Pid }, Bucket) ->
+  erldis:smembers(Pid, <<P/binary,Bucket/binary>>).
 
-
-
-k2l({B, V})->
-  <<B/binary,V/binary>>.
+k2l(P,{B, V})->
+  <<P/binary,B/binary,V/binary>>.

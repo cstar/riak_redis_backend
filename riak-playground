@@ -6,7 +6,7 @@
 main(_)->
   {ok, C} = riak:client_connect(dev1@boulette.local),
   step1(C),
-  %step2(C),
+  step2(C),
   %empty_bucket(C, <<"entries">>).
   ok.
   
@@ -18,11 +18,10 @@ empty_bucket(C, Name)->
 
 step2(C)->
   Participant = make_rand_list_picker([<<"cstar">>, <<"martin">>, <<"sacha">>, <<"helene">>, <<"boulette">>]),
-  Entry = make_rand_fun(100),
-  Blog = make_rand_fun(20),
+  Entry = make_rand_fun(1000),
+  Blog = make_rand_fun(200),
   statistics(wall_clock),
-  fill(10, C, Participant, Entry, Blog),
-  %{_, R1} = statistics(runtime),
+  fill(1000, C, Participant, Entry, Blog),
   {_, W1} = statistics(wall_clock),
   io:format("Fill time for adding 1000 entry: ~p seconds~n", [ W1/1000]),
   count_chars_per_user(C),
@@ -30,8 +29,9 @@ step2(C)->
   io:format("MapRed time=~p seconds~n", [W2/1000]),
   statistics(wall_clock),
   count_chars_for_user(C, <<"boulette">>),
-  {_, W2} = statistics(wall_clock),
-  io:format("MapRed time=~p seconds~n", [W2/1000]).
+  {_, W3} = statistics(wall_clock),
+  io:format("MapRed time=~p seconds~n", [W3/1000]),
+  ok.
 
 
 

@@ -1,8 +1,0 @@
-#!/usr/bin/env escript
-%% -*- erlang -*-
-%%! -boot start_sasl -name tester -setcookie riak -pa . -pa ../erldis/ebin -pa ../riak/apps/riak/ebin
-
-main(_)->
-  fprof:apply(riak_test_util,standard_backend_test, [riak_redis_backend]),
-  fprof:profile(),
-  fprof:analyse([no_callers, no_details, totals]).
