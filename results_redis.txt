@@ -18,3 +18,5 @@ Usage per user : [{<<"martin">>,88400},
 MapRed time=0.345 seconds
 Usage  : {<<"boulette">>,86400}
 MapRed time=0.162 seconds
+
+AVG : 0.317
