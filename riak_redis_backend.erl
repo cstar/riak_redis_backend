@@ -24,6 +24,8 @@
 -author('Eric Cestari <eric@ohmforce.com').
 -export([start/1,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
 
+
+-define(RSEND(V), redis_send(fun()-> V end)).
 % @type state() = term().
 -record(state, {pid, partition}).
 
@@ -55,25 +57,29 @@ get(#state{partition=P, pid=Pid}, BK)->
 % put(state(), Key :: binary(), Val :: binary()) ->
 %   ok | {error, Reason :: term()}  
 put(#state{partition=P,pid=Pid}, {Bucket, Key}=BK, Value)->
-  erldis:sadd(Pid, <<"buckets:",P/binary>>,Bucket),
-  case erldis:set(Pid, k2l(P,BK), term_to_binary(Value)) of
-    ok -> 
-      erldis:sadd(Pid, <<P/binary,Bucket/binary>>, Key),
-      erldis:sadd(Pid, <<"world:",P/binary>>, term_to_binary(BK)),
+  redis_send(fun()->erldis:sadd(Pid, <<"buckets:",P/binary>>,Bucket) end),
+  redis_send(fun()->erldis:set(Pid, k2l(P,BK), term_to_binary(Value))end),
+  redis_send(fun()->erldis:sadd(Pid, <<P/binary,Bucket/binary>>, Key)end),
+  redis_send(fun()->erldis:sadd(Pid, <<"world:",P/binary>>, term_to_binary(BK))end),
+  case redis_recv(4) of
+    [_,_, _, _] ->
       ok;
-    _ -> {error, unable_to_put}
+    _ ->
+      {error, unable_to_put}
   end.
+
 
 % delete(state(), Key :: binary()) ->
 %   ok | {error, Reason :: term()}
 delete(#state {partition=P, pid=Pid }, {Bucket, Key}=BK) ->
-  erldis:srem(Pid, <<"buckets:",P/binary>>,Bucket),
-  case erldis:del(Pid, k2l(P,BK)) of
-    true -> 
-      erldis:srem(Pid, <<P/binary,Bucket/binary>>, Key),
-      erldis:srem(Pid, <<"world:",P/binary>>, term_to_binary(BK)),
+  ?RSEND(erldis:srem(Pid, <<"buckets:",P/binary>>,Bucket)),
+  ?RSEND(erldis:del(Pid, k2l(P,BK))),
+  ?RSEND(erldis:srem(Pid, <<P/binary,Bucket/binary>>, Key)),
+  ?RSEND(erldis:srem(Pid, <<"world:",P/binary>>, term_to_binary(BK))),
+  case redis_recv(4) of
+    [_,_, _, _] ->
       ok;
-    _ -> 
+    _ ->
       {error, unable_to_delete}
   end.
   
@@ -92,3 +98,17 @@ list_bucket(#state {partition=P,  pid=Pid }, Bucket) ->
 
 k2l(P,{B, V})->
   <<P/binary,B/binary,V/binary>>.
+
+redis_recv(N)->
+  lists:map(
+    fun(_)->
+      receive {redis, Ret} ->  Ret  end
+    end, lists:seq(1,N)).
+    
+
+redis_send(Fun)->
+  Pid = self(),
+  spawn(fun()->
+    Res = Fun(),
+    Pid ! {redis, Res}
+  end).

@@ -1,0 +1,20 @@
+Run 1 : 
+Fill time for adding 1000 entry: 8.492 seconds
+Usage per user : [{<<"martin">>,279600},
+                  {<<"boulette">>,274900},
+                  {<<"cstar">>,405500},
+                  {<<"helene">>,273000},
+                  {<<"sacha">>,320400}]
+MapRed time=0.411 seconds
+Usage  : {<<"boulette">>,274900}
+MapRed time=0.351 seconds
+Run 2 :
+Fill time for adding 1000 entry: 7.958 seconds
+Usage per user : [{<<"martin">>,88400},
+                  {<<"boulette">>,86400},
+                  {<<"cstar">>,94600},
+                  {<<"helene">>,108100},
+                  {<<"sacha">>,69500}]
+MapRed time=0.345 seconds
+Usage  : {<<"boulette">>,86400}
+MapRed time=0.162 seconds
