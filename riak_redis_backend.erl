@@ -4,8 +4,6 @@
 %% a copy of the License at
 
 %%   http://www.apache.org/licenses/LICENSE-2.0
-%%[{ totals,                                     4239,   44.484,   22.362}].
-%%[{ totals,                                     4951,   36.381,   26.965}].
 
 
 %% Unless required by applicable law or agreed to in writing,
@@ -18,8 +16,6 @@
 %% @doc riak_redis_backend is a Riak storage backend using erldis.
 
 
-%% Blog post about the initial release : 
-%% http://cestari.wordpress.com/2009/12/22/a-redis-backend-for-riak/
 -module(riak_redis_backend).
 -author('Eric Cestari <eric@ohmforce.com').
 -export([start/1,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
