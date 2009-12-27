@@ -8,15 +8,17 @@ You need :
 
  - the [erldis binaries](http://github.com/cstar/erldis/tree/binaries) branch available in your Riak installation.
 
- - Redis of course. Any version will do. 
+ - [Redis](http://code.google.com/p/redis/) (Any version will do). 
 
-	- compile (`erlc riak_redis_backend.erl`) and copy the beam file in your riak installation.
+ - [Riak](http://riak.basho.com/)
+
+ - compile (`erlc riak_redis_backend.erl`) and copy the beam file in your riak installation.
 
 Configure riak :
 
   `{storage_backend, riak_dets_backend}` in the `etc/app.config`
 
-For the time being, Redis must run locally. I will certainly add the line to configure the redis host port.
+For the time being, Redis must run locally. I will certainly add the line to configure the redis host and port.
 
 Other files
 -----------
