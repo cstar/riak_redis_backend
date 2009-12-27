@@ -29,7 +29,7 @@
 %                        {ok, state()} | {{error, Reason :: term()}, state()}
 start(Partition)->
   {ok, Pid} = erldis_sync_client:connect(),
-  P=list_to_binary(integer_to_list(Partition)),
+  P=list_to_binary(atom_to_list(node()) ++ integer_to_list(Partition)),
   {ok, #state{pid=Pid, partition = P}}.
 
 % @spec stop(state()) -> ok | {error, Reason :: term()}  
