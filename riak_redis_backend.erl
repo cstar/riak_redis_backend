@@ -53,11 +53,13 @@ get(#state{partition=P, pid=Pid}, BK)->
 % put(state(), Key :: binary(), Val :: binary()) ->
 %   ok | {error, Reason :: term()}  
 put(#state{partition=P,pid=Pid}, {Bucket, Key}=BK, Value)->
-  redis_send(fun()->erldis:sadd(Pid, <<"buckets:",P/binary>>,Bucket) end),
-  redis_send(fun()->erldis:set(Pid, k2l(P,BK), term_to_binary(Value))end),
-  redis_send(fun()->erldis:sadd(Pid, <<P/binary,Bucket/binary>>, Key)end),
-  redis_send(fun()->erldis:sadd(Pid, <<"world:",P/binary>>, term_to_binary(BK))end),
-  case redis_recv(4) of
+  Fun = fun(_C)->
+    erldis:sadd(Pid, <<"buckets:",P/binary>>,Bucket),
+    erldis:set(Pid, k2l(P,BK), term_to_binary(Value)),
+    erldis:sadd(Pid, <<P/binary,Bucket/binary>>, Key),
+    erldis:sadd(Pid, <<"world:",P/binary>>, term_to_binary(BK))
+  end,
+  case  erldis:exec(Pid, Fun) of
     [_,_, _, _] ->
       ok;
     _ ->
@@ -68,11 +70,13 @@ put(#state{partition=P,pid=Pid}, {Bucket, Key}=BK, Value)->
 % delete(state(), Key :: binary()) ->
 %   ok | {error, Reason :: term()}
 delete(#state {partition=P, pid=Pid }, {Bucket, Key}=BK) ->
-  ?RSEND(erldis:srem(Pid, <<"buckets:",P/binary>>,Bucket)),
-  ?RSEND(erldis:del(Pid, k2l(P,BK))),
-  ?RSEND(erldis:srem(Pid, <<P/binary,Bucket/binary>>, Key)),
-  ?RSEND(erldis:srem(Pid, <<"world:",P/binary>>, term_to_binary(BK))),
-  case redis_recv(4) of
+  Fun = fun(_C)->
+    erldis:srem(Pid, <<"buckets:",P/binary>>,Bucket),
+    erldis:del(Pid, k2l(P,BK)),
+    erldis:srem(Pid, <<P/binary,Bucket/binary>>, Key),
+    erldis:srem(Pid, <<"world:",P/binary>>, term_to_binary(BK))
+  end,
+  case erldis:exec(Pid, Fun) of
     [_,_, _, _] ->
       ok;
     _ ->
@@ -94,17 +98,3 @@ list_bucket(#state {partition=P,  pid=Pid }, Bucket) ->
 
 k2l(P,{B, V})->
   <<P/binary,B/binary,V/binary>>.
-
-redis_recv(N)->
-  lists:map(
-    fun(_)->
-      receive {redis, Ret} ->  Ret  end
-    end, lists:seq(1,N)).
-    
-
-redis_send(Fun)->
-  Pid = self(),
-  spawn(fun()->
-    Res = Fun(),
-    Pid ! {redis, Res}
-  end).
