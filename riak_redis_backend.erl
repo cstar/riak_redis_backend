@@ -53,35 +53,43 @@ get(#state{partition=P, pid=Pid}, BK)->
 % put(state(), Key :: binary(), Val :: binary()) ->
 %   ok | {error, Reason :: term()}  
 put(#state{partition=P,pid=Pid}, {Bucket, Key}=BK, Value)->
-  Fun = fun(_C)->
+  %Fun = fun(_C)->
+    erldis:set_pipelining(Pid,true),
     erldis:sadd(Pid, <<"buckets:",P/binary>>,Bucket),
     erldis:set(Pid, k2l(P,BK), term_to_binary(Value)),
     erldis:sadd(Pid, <<P/binary,Bucket/binary>>, Key),
-    erldis:sadd(Pid, <<"world:",P/binary>>, term_to_binary(BK))
-  end,
-  case  erldis:exec(Pid, Fun) of
-    [_,_, _, _] ->
-      ok;
-    _ ->
-      {error, unable_to_put}
-  end.
+    erldis:sadd(Pid, <<"world:",P/binary>>, term_to_binary(BK)),
+    erldis:get_all_results(Pid),
+    erldis:set_pipelining(Pid,false),
+    ok.
+  %end,
+  %case  erldis:exec(Pid, Fun) of
+  %  [_,_, _, _] ->
+  %    ok;
+  %  _ ->
+  %    {error, unable_to_put}
+  %end.
 
 
 % delete(state(), Key :: binary()) ->
 %   ok | {error, Reason :: term()}
 delete(#state {partition=P, pid=Pid }, {Bucket, Key}=BK) ->
-  Fun = fun(_C)->
+  %Fun = fun(_C)->
+    erldis:set_pipelining(Pid,true),
     erldis:srem(Pid, <<"buckets:",P/binary>>,Bucket),
     erldis:del(Pid, k2l(P,BK)),
     erldis:srem(Pid, <<P/binary,Bucket/binary>>, Key),
-    erldis:srem(Pid, <<"world:",P/binary>>, term_to_binary(BK))
-  end,
-  case erldis:exec(Pid, Fun) of
-    [_,_, _, _] ->
-      ok;
-    _ ->
-      {error, unable_to_delete}
-  end.
+    erldis:srem(Pid, <<"world:",P/binary>>, term_to_binary(BK)),
+    erldis:get_all_results(Pid),
+    erldis:set_pipelining(Pid,false),
+  ok.
+  %end,
+  %case erldis:exec(Pid, Fun) of
+  %  [_,_, _, _] ->
+  %    ok;
+  %  _ ->
+  %    {error, unable_to_delete}
+  %end.
   
 % list(state()) -> [Key :: binary()]
 list(#state {partition=P, pid=Pid }) ->
